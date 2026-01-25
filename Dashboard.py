@@ -38,6 +38,10 @@ machine_df, operator_df = load_data()
 # ----------------------------
 # SIDEBAR FILTERS
 # ----------------------------
+
+# Push sidebar content down a bit
+st.sidebar.markdown("<br><br>", unsafe_allow_html=True)
+
 st.sidebar.title("🔍 Filters")
 
 year_sel = st.sidebar.multiselect(
@@ -155,7 +159,7 @@ with tab_machine:
         type="category"
     )
 
-    fig.update_xaxes(title="Efficiency (%)")
+    fig.update_xaxes(title="Machine Number")
     st.plotly_chart(fig, use_container_width=True)
 
     # Rolls by Machine
@@ -372,35 +376,80 @@ with tab_prod:
 
 
 
-    # Table View
+    # ============================
+    # 📋 Unified Production Table
+    # ============================
+
     st.subheader("📋 Production Table")
 
-    view_type = st.selectbox(
-        "View By",
-        ["Machine-wise", "Date-wise"]
+    prod_table = machine_f.copy()
+
+    # Ensure required columns exist
+    prod_table["Date"] = pd.to_datetime(prod_table["Date"])
+    prod_table["Year"] = prod_table["Date"].dt.year
+    prod_table["Month"] = prod_table["Date"].dt.month
+    prod_table["Month_Name"] = prod_table["Date"].dt.strftime("%B")
+    prod_table["Week"] = prod_table["Date"].dt.isocalendar().week.astype(int)
+
+    # --------------------------------
+    # 🔎 Table Filters (LOCAL SEARCH)
+    # --------------------------------
+    c1, c2 = st.columns(2)
+
+    with c1:
+        machine_search = st.text_input(
+            "Search by Machine Number",
+            placeholder="e.g. 1 or 25"
+        )
+
+    with c2:
+        date_search = st.date_input(
+            "Search by Date",
+            value=None
+        )
+
+    # Apply local filters
+    if machine_search:
+        if machine_search.isdigit():
+            prod_table = prod_table[
+                prod_table["Machine Number"] == int(machine_search)
+            ]
+
+    if date_search:
+        prod_table = prod_table[
+            prod_table["Date"].dt.date == date_search
+        ]
+
+    # --------------------------------
+    # 🧠 Smart aggregation
+    # --------------------------------
+    # Aggregate after filters
+    prod_table = (
+        prod_table
+        .groupby(
+            ["Date", "Machine Number"],
+            as_index=False
+        )
+        .agg(
+            Total_Rolls=("Production", "sum")
+        )
+        .sort_values(["Date", "Machine Number"])
     )
 
-    if view_type == "Machine-wise":
-        table = (
-            machine_f
-            .groupby("Machine Number")["Production"]
-            .sum()
-            .reset_index()
-        )
-    else:
-        table = (
-            machine_f
-            .groupby("Date")["Production"]
-            .sum()
-            .reset_index()
-        )
-
+    # --------------------------------
+    # 📊 Display table
+    # --------------------------------
     st.data_editor(
-        table,
+        prod_table,
         use_container_width=True,
         hide_index=True,
         disabled=True
     )
+
+    st.caption(
+        "Search by Machine Number or Date. Data respects sidebar filters automatically."
+    )
+
 
 # ==================================================
 # 👷 OPERATOR EFFICIENCY DASHBOARD
